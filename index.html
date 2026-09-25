@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR" data-mode="light" data-accent="verde">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover: sem isso o env(safe-area-inset-*) vem zerado e o conteúdo
+         passa por baixo da barra de status / barra de gestos no Android 15+. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#f6f7f4" />
+    <title>Deu Quanto?</title>
+    <script>
+      // Tema antes da primeira pintura: sem isso, quem usa o escuro vê um flash branco
+      // até o React carregar as preferências. Espelho de src/lib/theme.ts.
+      try {
+        var t = JSON.parse(localStorage.getItem('lc-theme') || '{}')
+        var dark = t.mode === 'dark' || (t.mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.mode = dark ? 'dark' : 'light'
+        if (t.accent) document.documentElement.dataset.accent = t.accent
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

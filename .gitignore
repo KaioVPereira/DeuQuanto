@@ -1,0 +1,19 @@
+node_modules
+dist
+.vite
+*.log
+
+# APKs gerados (distribuir por fora do git)
+apk
+
+# Build do Android
+android/app/build
+android/build
+android/.gradle
+android/local.properties
+
+# Chaves de assinatura e segredos nunca vão para o repositório
+*.jks
+*.keystore
+keystore.properties
+.env*

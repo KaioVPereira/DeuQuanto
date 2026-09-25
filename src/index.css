@@ -1,0 +1,241 @@
+@import 'tailwindcss';
+
+/*
+ * Tokens de cor. O @theme é o padrão (verde claro); os temas abaixo sobrescrevem as
+ * mesmas variáveis por atributo — data-mode (light|dark) + data-accent (cor). Como
+ * são atributos e não só :root, dá para aplicar um tema num pedaço da tela (é assim
+ * que as prévias da tela de Ajustes se desenham).
+ *
+ *   brand        botões, progresso, destaques
+ *   brand-press  botão pressionado
+ *   brand-strong texto sobre brand-soft
+ *   on-brand     texto sobre brand
+ */
+@theme {
+  --color-bg: #f5f6f1;
+  --color-card: #ffffff;
+  --color-ink: #1b1f19;
+  --color-muted: #697064;
+  --color-faint: #9aa194;
+  --color-line: #e3e6dc;
+  --color-photo: #ffffff;
+  --color-brand: #1e7a46;
+  --color-brand-press: #17633a;
+  --color-brand-strong: #17633a;
+  --color-brand-soft: #e2f1e7;
+  --color-on-brand: #ffffff;
+  --color-over: #c2410c;
+  --color-over-soft: #fdeee6;
+  --color-under: #15803d;
+  --color-under-soft: #e3f4e8;
+  --font-sans: 'Inter Variable', Roboto, system-ui, sans-serif;
+}
+
+:root {
+  /* O Capacitor 8 injeta --safe-area-inset-*; env() cobre o navegador. */
+  --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  color-scheme: light;
+}
+
+/* ---------- Aparência ---------- */
+[data-mode='light'] {
+  --color-card: #ffffff;
+  --color-ink: #1b1f19;
+  --color-muted: #697064;
+  --color-faint: #9aa194;
+  --color-photo: #ffffff;
+  --color-over: #c2410c;
+  --color-over-soft: #fdeee6;
+  --color-under: #15803d;
+  --color-under-soft: #e3f4e8;
+  color-scheme: light;
+}
+[data-mode='dark'] {
+  --color-ink: #eceee9;
+  --color-muted: #a3a99e;
+  --color-faint: #6c7268;
+  /* Fotos de produto têm fundo branco: um quase-branco cansa menos no escuro. */
+  --color-photo: #eeeeec;
+  --color-over: #fb8f55;
+  --color-over-soft: #3a2217;
+  --color-under: #5fd68f;
+  --color-under-soft: #15301f;
+  color-scheme: dark;
+}
+
+/* ---------- Cores (claro) ---------- */
+[data-accent='verde'][data-mode='light'] {
+  --color-bg: #f5f6f1;
+  --color-line: #e3e6dc;
+  --color-brand: #1e7a46;
+  --color-brand-press: #17633a;
+  --color-brand-strong: #17633a;
+  --color-brand-soft: #e2f1e7;
+  --color-on-brand: #ffffff;
+}
+[data-accent='rosa'][data-mode='light'] {
+  --color-bg: #fcf7f9;
+  --color-line: #f0e1e8;
+  --color-brand: #cf2e6e;
+  --color-brand-press: #b0245c;
+  --color-brand-strong: #a11f55;
+  --color-brand-soft: #fde6f0;
+  --color-on-brand: #ffffff;
+}
+[data-accent='azul'][data-mode='light'] {
+  --color-bg: #f5f7fb;
+  --color-line: #e0e5ef;
+  --color-brand: #2563eb;
+  --color-brand-press: #1d4fd0;
+  --color-brand-strong: #1e40af;
+  --color-brand-soft: #e3ecfd;
+  --color-on-brand: #ffffff;
+}
+[data-accent='roxo'][data-mode='light'] {
+  --color-bg: #f7f5fb;
+  --color-line: #e7e1f0;
+  --color-brand: #7c3aed;
+  --color-brand-press: #6428d0;
+  --color-brand-strong: #5b21b6;
+  --color-brand-soft: #efe7fd;
+  --color-on-brand: #ffffff;
+}
+[data-accent='grafite'][data-mode='light'] {
+  --color-bg: #f6f6f7;
+  --color-line: #e4e4e7;
+  --color-brand: #27272a;
+  --color-brand-press: #18181b;
+  --color-brand-strong: #18181b;
+  --color-brand-soft: #ececee;
+  --color-on-brand: #ffffff;
+}
+
+/* ---------- Cores (escuro): acentos mais vivos, com texto escuro por cima ---------- */
+[data-accent='verde'][data-mode='dark'] {
+  --color-bg: #0e110f;
+  --color-card: #181c19;
+  --color-line: #2a302b;
+  --color-brand: #4cc27f;
+  --color-brand-press: #3aa96a;
+  --color-brand-strong: #8be0ae;
+  --color-brand-soft: #1a3325;
+  --color-on-brand: #07210f;
+}
+[data-accent='rosa'][data-mode='dark'] {
+  --color-bg: #120e10;
+  --color-card: #1d171a;
+  --color-line: #33292e;
+  --color-brand: #f06aa6;
+  --color-brand-press: #db4f8f;
+  --color-brand-strong: #f7a3c9;
+  --color-brand-soft: #3d1a2b;
+  --color-on-brand: #2b0716;
+}
+[data-accent='azul'][data-mode='dark'] {
+  --color-bg: #0d1015;
+  --color-card: #161a21;
+  --color-line: #262c37;
+  --color-brand: #5b8def;
+  --color-brand-press: #4677dc;
+  --color-brand-strong: #a7c2fa;
+  --color-brand-soft: #1a2542;
+  --color-on-brand: #06122e;
+}
+[data-accent='roxo'][data-mode='dark'] {
+  --color-bg: #100e15;
+  --color-card: #1a1721;
+  --color-line: #2e2838;
+  --color-brand: #a57cf5;
+  --color-brand-press: #8f63e6;
+  --color-brand-strong: #cdb7fb;
+  --color-brand-soft: #2a1f45;
+  --color-on-brand: #1a0b3a;
+}
+[data-accent='grafite'][data-mode='dark'] {
+  --color-bg: #0f0f11;
+  --color-card: #19191c;
+  --color-line: #2c2c31;
+  --color-brand: #e7e7ea;
+  --color-brand-press: #cfcfd4;
+  --color-brand-strong: #f4f4f5;
+  --color-brand-soft: #2c2c31;
+  --color-on-brand: #111113;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+button {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+select {
+  font-size: 16px;
+}
+
+.pt-safe {
+  padding-top: var(--sat);
+}
+.pb-safe {
+  padding-bottom: var(--sab);
+}
+.bottom-safe {
+  bottom: calc(var(--sab) + 1rem);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-sheet {
+  animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.animate-fade {
+  animation: fade-in 180ms ease-out;
+}
+@keyframes pop {
+  0% {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-pop {
+  animation: pop 180ms ease-out;
+}
