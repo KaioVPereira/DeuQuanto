@@ -18,6 +18,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/proxy\/atacadao/, ''),
       },
+      // Servidor de sincronização local (`npm start` em server/), para testar as listas
+      // compartilhadas no navegador. O build de produção chama o servidor de verdade.
+      '/api': 'http://localhost:8787',
+      '/c/': 'http://localhost:8787',
     },
   },
 })

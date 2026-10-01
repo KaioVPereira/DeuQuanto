@@ -13,12 +13,15 @@ export function ItemRow({
   item,
   image,
   fallback,
+  addedBy,
   onCheck,
   onOpen,
 }: {
   item: ListItem
   image?: string | null
   fallback: string
+  /** Lista compartilhada: nome de quem adicionou, quando foi outra pessoa. */
+  addedBy?: string | null
   onCheck: () => void
   onOpen: () => void
 }) {
@@ -37,7 +40,17 @@ export function ItemRow({
         </span>
       </button>
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left">
-        <ProductThumb image={image} fallback={fallback} size={48} />
+        <span className="relative shrink-0">
+          <ProductThumb image={image} fallback={fallback} size={48} />
+          {addedBy && (
+            <span
+              title={`Adicionado por ${addedBy}`}
+              className="absolute -right-1.5 -bottom-1.5 grid size-5 place-items-center rounded-full bg-brand text-[10px] font-bold text-on-brand ring-2 ring-card"
+            >
+              {addedBy.trim()[0]?.toUpperCase()}
+            </span>
+          )}
+        </span>
         <div className="min-w-0 flex-1">
           <div className={`truncate font-semibold ${item.checked ? 'line-through decoration-faint' : ''}`}>{item.name}</div>
           <div className="tabular truncate text-sm text-muted">
@@ -47,6 +60,7 @@ export function ItemRow({
               : item.expectedPrice != null
                 ? ` · est. ${formatMoney(item.expectedPrice)}`
                 : ' · sem preço'}
+            {addedBy && <span className="text-brand-strong"> · por {addedBy}</span>}
           </div>
         </div>
         <div className="shrink-0 text-right">

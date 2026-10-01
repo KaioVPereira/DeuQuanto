@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Plus, Settings, ShoppingBasket } from 'lucide-react'
+import { ChevronRight, Plus, Settings, ShoppingBasket, UserPlus, Users } from 'lucide-react'
 import { DeltaChip, Fab, Header } from '@/components/ui'
 import { NewListSheet } from '@/components/ListSheets'
 import { useMarket, useStore } from '@/store/store'
@@ -8,11 +8,13 @@ import { MarketAvatar } from '@/components/media'
 import { listTotals } from '@/lib/calc'
 import { formatDateLong, formatMoney } from '@/lib/format'
 import type { ShoppingList } from '@/lib/types'
+import { useAppUpdate } from '@/lib/appUpdate'
 
 export function HomePage() {
   const navigate = useNavigate()
   const lists = useStore((s) => s.lists)
   const [creating, setCreating] = useState(false)
+  const { updateAvailable } = useAppUpdate()
 
   const sorted = [...lists].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
   const open = sorted.filter((l) => !l.finishedAt)
@@ -23,14 +25,20 @@ export function HomePage() {
       <Header
         title="Minhas listas"
         right={
-          <button onClick={() => navigate('/ajustes')} className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-muted active:bg-line">
-            <Settings size={18} /> Ajustes
-          </button>
+          <div className="flex items-center">
+            <button onClick={() => navigate('/entrar')} className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-muted active:bg-line">
+              <UserPlus size={18} /> Entrar
+            </button>
+            <button onClick={() => navigate('/ajustes')} className="relative rounded-full p-2.5 text-muted active:bg-line" aria-label="Ajustes">
+              <Settings size={20} />
+              {updateAvailable && <span className="absolute top-1.5 right-1.5 size-2.5 rounded-full bg-over ring-2 ring-bg" aria-label="Nova versão" />}
+            </button>
+          </div>
         }
       />
 
       <div className="space-y-6 px-4 pt-2">
-        {lists.length === 0 && <EmptyState onCreate={() => setCreating(true)} />}
+        {lists.length === 0 && <EmptyState onCreate={() => setCreating(true)} onJoin={() => navigate('/entrar')} />}
 
         <HistorySummary lists={done} />
 
@@ -87,6 +95,7 @@ function ListCard({ list, onClick }: { list: ShoppingList; onClick: () => void }
               {market && ` · ${market.name}`}
             </span>
           </div>
+          {list.share && <SharedWith list={list} />}
         </div>
         <div className="flex items-center gap-1 pt-1 text-sm text-muted">
           <span className="tabular">
@@ -149,7 +158,20 @@ function HistorySummary({ lists }: { lists: ShoppingList[] }) {
   )
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+/** "Com Ana" embaixo do nome da lista compartilhada. */
+function SharedWith({ list }: { list: ShoppingList }) {
+  const share = list.share!
+  const others = share.members.filter((m) => m.id !== share.memberId).map((m) => m.name)
+  const text = share.ended ? 'Não é mais compartilhada' : others.length ? `Com ${others.join(', ')}` : 'Compartilhada · ninguém entrou ainda'
+  return (
+    <div className={`mt-1 flex items-center gap-1.5 text-sm font-medium ${share.ended ? 'text-muted' : 'text-brand-strong'}`}>
+      <Users size={15} className="shrink-0" />
+      <span className="truncate">{text}</span>
+    </div>
+  )
+}
+
+function EmptyState({ onCreate, onJoin }: { onCreate: () => void; onJoin: () => void }) {
   return (
     <div className="flex flex-col items-center px-6 pt-16 text-center">
       <div className="grid size-20 place-items-center rounded-3xl bg-brand-soft text-brand">
@@ -162,6 +184,9 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       </p>
       <button onClick={onCreate} className="mt-6 rounded-2xl bg-brand px-6 py-3.5 font-semibold text-on-brand active:bg-brand-press">
         Criar minha primeira lista
+      </button>
+      <button onClick={onJoin} className="mt-3 rounded-2xl px-6 py-3 font-semibold text-brand-strong active:bg-brand-soft">
+        Entrar numa lista compartilhada
       </button>
     </div>
   )

@@ -6,6 +6,7 @@ import { ItemActionsSheet, ItemRow } from '@/components/items'
 import { ConfirmSheet } from '@/components/ConfirmSheet'
 import { ItemFormSheet, type ItemFormMode } from '@/components/ItemFormSheet'
 import { useList, useStore } from '@/store/store'
+import { useLiveSync } from '@/sync/engine'
 import { totalsOf } from '@/lib/calc'
 import { formatMoney } from '@/lib/format'
 import type { ListItem } from '@/lib/types'
@@ -23,6 +24,7 @@ export function SectorPage() {
   const [actions, setActions] = useState<ListItem | null>(null)
   const [form, setForm] = useState<ItemFormMode | null>(null)
   const activeChip = useRef<HTMLButtonElement>(null)
+  useLiveSync(list?.id)
 
   useEffect(() => {
     activeChip.current?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
@@ -41,6 +43,11 @@ export function SectorPage() {
   // Mantém a referência "viva" do item aberto no painel (o store troca o objeto a cada edição).
   const live = (item: ListItem | null) => (item ? (list.items.find((i) => i.id === item.id) ?? null) : null)
 
+  // Selo de quem adicionou: só nos itens que outra pessoa pôs depois de compartilhar.
+  const share = list.share
+  const addedBy = (item: ListItem) =>
+    share && item.createdBy && item.createdBy !== share.memberId ? (share.members.find((m) => m.id === item.createdBy)?.name ?? null) : null
+
   const goTo = (target: string) => navigate(`/lista/${list.id}/setor/${target}`, { replace: true })
 
   const renderItems = (group: ListItem[]) => {
@@ -54,6 +61,7 @@ export function SectorPage() {
             item={item}
             image={catalog[item.productKey]?.image}
             fallback={sectors.find((s) => s.id === item.sectorId)?.emoji ?? '🛒'}
+            addedBy={addedBy(item)}
             onCheck={() => setConfirming(item)}
             onOpen={() => setActions(item)}
           />

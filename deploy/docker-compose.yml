@@ -1,0 +1,41 @@
+name: deuquanto
+
+# O servidor de sincronização do Deu Quanto? mora na MESMA VPS do Games Trackers, igual ao
+# Finanças: entra na rede do gametracker e o Caddy de lá atende deuquanto.<domínio> e faz
+# proxy pra cá (bloco no Caddyfile do GameTracker). Não usa o SQL Server: o banco é um
+# arquivo SQLite no volume abaixo — se o Games Trackers cair, as listas continuam.
+#
+# O serviço NÃO pode se chamar "api" (o Caddy do Games Trackers faz `reverse_proxy api:8080`;
+# foi assim que o Finanças derrubou o site em 17/09/2026).
+#
+# Nada aqui é segredo: os tokens das listas ficam só como hash no banco.
+
+services:
+  deuquanto-sync:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: deuquanto-sync
+    environment:
+      PORT: 8080
+      DATA_DIR: /data
+      APK_DIR: /apk
+      PUBLIC_URL: https://deuquanto.gamestrackers.com
+      ANDROID_PACKAGE: com.listadecompras.app
+      # SHA-256 da chave que assina o APK (a de debug deste PC, a mesma do Games Trackers e do
+      # Finanças). Se um dia trocar de chave, acrescente a nova separada por vírgula.
+      ANDROID_CERT_SHA256: "16:E3:6D:03:F3:3A:17:74:D1:25:D1:A3:8E:ED:B3:89:19:6B:2C:0E:3A:28:55:B6:FA:95:EB:A5:8E:63:DA:1E"
+      TZ: America/Sao_Paulo
+    volumes:
+      # Fora da pasta do repositório (o deploy faz `git reset --hard` lá).
+      #   db/  → o banco (deuquanto.db); dono uid 1000 (usuário node do contêiner)
+      #   apk/ → APKs para download; pra publicar: scp do .apk + publish-release.ts
+      - /root/deuquanto-data/db:/data
+      - /root/deuquanto-data/apk:/apk:ro
+    mem_limit: 128m
+    restart: unless-stopped
+
+networks:
+  default:
+    name: gametracker_default
+    external: true

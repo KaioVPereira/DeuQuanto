@@ -1,9 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Check, ChevronRight, LayoutGrid, Moon, Smartphone, Sun } from 'lucide-react'
+import { Check, ChevronRight, LayoutGrid, Moon, ShoppingBasket, Smartphone, Sun, UserRound } from 'lucide-react'
 import { Header } from '@/components/ui'
 import { useStore } from '@/store/store'
 import { ACCENTS, resolveMode, watchSystemMode, type Accent, type ThemeMode } from '@/lib/theme'
+import { useAppUpdate } from '@/lib/appUpdate'
+import { TextField } from '@/components/inputs'
 
 const MODES: { id: ThemeMode; label: string; icon: ReactNode }[] = [
   { id: 'light', label: 'Claro', icon: <Sun size={18} /> },
@@ -15,6 +17,10 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const { themeMode, accent } = useStore((s) => s.settings)
   const setSettings = useStore((s) => s.setSettings)
+  const device = useStore((s) => s.device)
+  const setDeviceName = useStore((s) => s.setDeviceName)
+  const [name, setName] = useState(device?.name ?? '')
+  const app = useAppUpdate()
   // As prévias acompanham o modo em uso agora (inclusive o do celular, no automático).
   const [previewMode, setPreviewMode] = useState(resolveMode(themeMode))
   useEffect(() => {
@@ -66,6 +72,40 @@ export function SettingsPage() {
               Setores do mercado
               <span className="block text-sm font-normal text-muted">Criar, renomear e pôr na ordem do seu mercado</span>
             </span>
+            <ChevronRight size={18} className="text-faint" />
+          </button>
+        </section>
+
+        <section>
+          <SectionTitle>Listas compartilhadas</SectionTitle>
+          <div className="rounded-2xl bg-card px-4 py-4 shadow-sm shadow-black/5">
+            <div className="mb-2 flex items-center gap-2 font-semibold">
+              <UserRound size={20} className="text-muted" /> Seu nome
+            </div>
+            <TextField
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => name.trim() && name.trim() !== device?.name && setDeviceName(name)}
+              placeholder="Como os outros te veem na lista"
+              autoCapitalize="words"
+              maxLength={40}
+            />
+            <p className="mt-2 text-sm text-muted">Aparece para quem está na mesma lista, e nos itens que você adicionar.</p>
+          </div>
+        </section>
+
+        <section>
+          <SectionTitle>Aplicativo</SectionTitle>
+          <button onClick={() => navigate('/ajustes/app')} className="flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-4 text-left font-semibold shadow-sm shadow-black/5 active:bg-bg">
+            <ShoppingBasket size={20} className="text-muted" />
+            <span className="flex-1">
+              Versão e atualização
+              <span className="block text-sm font-normal text-muted">
+                {app.installed ? `Instalada: ${app.installed.version}` : 'Baixar o app para Android'}
+                {app.latest && ` · mais recente: ${app.latest.version}`}
+              </span>
+            </span>
+            {app.updateAvailable && <span className="rounded-full bg-over-soft px-2.5 py-1 text-xs font-bold text-over">nova</span>}
             <ChevronRight size={18} className="text-faint" />
           </button>
         </section>

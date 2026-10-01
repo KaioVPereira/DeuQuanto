@@ -1,0 +1,7 @@
+# A imagem do servidor só precisa de shared/ e server/ — o resto (android, node_modules do
+# app, APKs) ficaria de fora do contexto de build.
+*
+!shared/
+!server/
+server/data
+server/node_modules

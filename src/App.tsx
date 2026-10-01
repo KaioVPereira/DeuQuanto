@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { HashRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { App as CapApp } from '@capacitor/app'
+import { normalizeCode } from '../shared/protocol'
 import { useStore } from '@/store/store'
-import { initBackButton } from '@/lib/native'
+import { initBackButton, isNative } from '@/lib/native'
 import { applyTheme, watchSystemMode } from '@/lib/theme'
+import { useSyncLoop } from '@/sync/engine'
+import { Toast } from '@/components/Toast'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { HomePage } from '@/pages/HomePage'
 import { ListPage } from '@/pages/ListPage'
 import { SectorPage } from '@/pages/SectorPage'
 import { SectorsPage } from '@/pages/SectorsPage'
+import { JoinPage } from '@/pages/JoinPage'
+import { AppPage } from '@/pages/AppPage'
 
 export function App() {
   const hydrated = useHydrated()
@@ -17,16 +23,52 @@ export function App() {
     <HashRouter>
       <BackButton />
       <ScrollToTop />
+      <SyncLoop />
+      <InviteLinks />
+      <Toast />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/lista/:id" element={<ListPage />} />
         <Route path="/lista/:id/setor/:sectorId" element={<SectorPage />} />
         <Route path="/setores" element={<SectorsPage />} />
         <Route path="/ajustes" element={<SettingsPage />} />
+        <Route path="/ajustes/app" element={<AppPage />} />
+        <Route path="/entrar" element={<JoinPage />} />
+        <Route path="/entrar/:code" element={<JoinPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
     </HashRouter>
   )
+}
+
+function SyncLoop() {
+  useSyncLoop()
+  return null
+}
+
+/**
+ * Link do convite (https://deuquanto.../c/K7P4QX ou deuquanto://c/K7P4QX) abrindo o app:
+ * vai para a tela de entrar com o código preenchido.
+ */
+function InviteLinks() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (!isNative) return
+    // Na abertura a frio o mesmo link pode chegar pelos dois caminhos: abre uma vez só.
+    let last = ''
+    const open = (url: string | undefined) => {
+      const m = url?.match(/\/c\/([A-Za-z0-9-]{4,12})/)
+      if (!m || url === last) return
+      last = url!
+      navigate(`/entrar/${normalizeCode(m[1])}`)
+    }
+    void CapApp.getLaunchUrl().then((r) => open(r?.url))
+    const handle = CapApp.addListener('appUrlOpen', (e) => open(e.url))
+    return () => {
+      void handle.then((h) => h.remove())
+    }
+  }, [navigate])
+  return null
 }
 
 /** Os dados vêm do armazenamento do aparelho de forma assíncrona; espera antes de desenhar. */

@@ -17,3 +17,6 @@ android/local.properties
 *.keystore
 keystore.properties
 .env*
+
+# Banco local do servidor de sincronização (npm start em server/)
+server/data

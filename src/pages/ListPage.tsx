@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { CheckCircle2, ChevronRight, CircleCheckBig, List, MoreVertical, Pencil, RotateCcw, Trash2 } from 'lucide-react'
+import { CheckCircle2, ChevronRight, CircleCheckBig, List, MoreVertical, Pencil, RotateCcw, Trash2, Users } from 'lucide-react'
 import { DeltaChip, Header, MenuItem, ProgressBar } from '@/components/ui'
 import { Sheet } from '@/components/Sheet'
 import { EditListSheet } from '@/components/ListSheets'
 import { ItemFormSheet } from '@/components/ItemFormSheet'
 import { CartBar, FinishSheet } from '@/components/CartBar'
+import { ShareSheet } from '@/components/ShareSheet'
+import { SharedBanner } from '@/components/SharedBanner'
+import { useLiveSync } from '@/sync/engine'
+import { api } from '@/sync/api'
 import { MarketChip, ProductThumb } from '@/components/media'
 import { useList, useMarket, useStore } from '@/store/store'
 import { totalsOf, type Totals } from '@/lib/calc'
@@ -24,8 +28,11 @@ export function ListPage() {
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [finishing, setFinishing] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  useLiveSync(list?.id)
 
   if (!list) return <Navigate to="/" replace />
+  const live = !!list.share && !list.share.ended
 
   const totals = totalsOf(list.items)
   const groups = sectors
@@ -46,6 +53,7 @@ export function ListPage() {
       />
 
       <div className="space-y-4 px-4 pt-1">
+        {list.share && <SharedBanner list={list} onClick={() => setSharing(true)} />}
         <SummaryCard totals={totals} finished={!!list.finishedAt} market={<MarketChip market={market} onClick={() => setEditing(true)} placeholder="Em qual mercado?" />} />
 
         {groups.length === 0 ? (
@@ -107,6 +115,7 @@ export function ListPage() {
       <ItemFormSheet open={adding} onClose={() => setAdding(false)} listId={list.id} mode={{ kind: 'add' }} />
       <EditListSheet list={list} open={editing} onClose={() => setEditing(false)} />
       <FinishSheet list={list} open={finishing} onClose={() => setFinishing(false)} onFinished={() => navigate('/', { replace: true })} />
+      <ShareSheet list={list} open={sharing} onClose={() => setSharing(false)} />
 
       <Sheet open={menu} onClose={() => setMenu(false)} title={list.name}>
         <div className="-mx-2">
@@ -118,6 +127,15 @@ export function ListPage() {
             }}
           >
             Editar nome, data e mercado
+          </MenuItem>
+          <MenuItem
+            icon={<Users size={20} />}
+            onClick={() => {
+              setMenu(false)
+              setSharing(true)
+            }}
+          >
+            {live ? 'Compartilhamento' : 'Compartilhar com alguém'}
           </MenuItem>
           {list.finishedAt ? (
             <MenuItem
@@ -144,8 +162,15 @@ export function ListPage() {
             danger
             icon={<Trash2 size={20} />}
             onClick={() => {
-              if (!window.confirm(`Excluir a lista "${list.name}"? Isso não pode ser desfeito.`)) return
+              const msg = !live
+                ? `Excluir a lista "${list.name}"? Isso não pode ser desfeito.`
+                : list.share!.isOwner
+                  ? `Excluir a lista "${list.name}"? Ela deixa de ser compartilhada — quem entrou fica com uma cópia.`
+                  : `Excluir a lista "${list.name}" deste celular? Você sai da lista; para os outros ela continua.`
+              if (!window.confirm(msg)) return
               setMenu(false)
+              // Avisa o servidor se der; sem internet, a lista sai daqui do mesmo jeito.
+              if (live) void api.leave(list.share!.remoteId, list.share!.token).catch(() => {})
               deleteList(list.id)
               navigate('/', { replace: true })
             }}

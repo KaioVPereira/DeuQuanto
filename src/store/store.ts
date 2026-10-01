@@ -1,10 +1,14 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
 import { Preferences } from '@capacitor/preferences'
-import type { CatalogEntry, ListItem, Market, Sector, ShoppingList, Unit, WebPriceRef } from '@/lib/types'
+import type { JoinResponse, Op, ShareResponse, SyncResponse } from '../../shared/protocol'
+import type { CatalogEntry, ListItem, ListShare, Market, Sector, ShoppingList, Unit, WebPriceRef } from '@/lib/types'
 import { productKey, todayIso, uid } from '@/lib/format'
 import { suggestedPrice } from '@/lib/calc'
+import { recordPaid, remapListMarket, remember, unrecordPaid, upsertMarket } from '@/lib/catalog'
 import type { Accent, ThemeMode } from '@/lib/theme'
+import { createItemOp, deleteItemOp, listOp, marketRef, patchItemOp, sectorOps } from '@/sync/ops'
+import { mergeJoin, mergeSync, type RemoteSummary } from '@/sync/merge'
 
 export const FALLBACK_SECTOR = 'outros'
 
@@ -25,8 +29,6 @@ const DEFAULT_SECTORS: Sector[] = [
   { id: FALLBACK_SECTOR, name: 'Outros', emoji: '📦' },
 ]
 
-const MAX_PRICE_HISTORY = 20
-
 export interface NewItemInput {
   name: string
   sectorId: string
@@ -38,12 +40,21 @@ export interface NewItemInput {
   webRef?: WebPriceRef | null
 }
 
+/** Este celular nas listas compartilhadas: o id fica fixo, o nome a pessoa escolhe. */
+export interface Device {
+  id: string
+  name: string
+}
+
 interface State {
   lists: ShoppingList[]
   sectors: Sector[]
   catalog: Record<string, CatalogEntry>
   markets: Market[]
   settings: { themeMode: ThemeMode; accent: Accent }
+  device: Device | null
+  /** Alterações de listas compartilhadas ainda não confirmadas pelo servidor, por lista. */
+  outbox: Record<string, Op[]>
 
   setSettings: (patch: Partial<State['settings']>) => void
   createList: (name: string, date: string, copyFromId?: string | null, marketId?: string | null) => string
@@ -67,6 +78,17 @@ interface State {
 
   /** Reaproveita o mercado se já existir (mesmo ponto do mapa ou mesmo nome). */
   addMarket: (market: Omit<Market, 'id'>) => string
+
+  // ---------- Listas compartilhadas ----------
+  setDeviceName: (name: string) => Device
+  /** A lista deste celular acabou de subir para o servidor. */
+  startSharing: (listId: string, res: ShareResponse) => void
+  /** Entrou numa lista pelo código: devolve o id local dela. */
+  joinShared: (res: JoinResponse) => string
+  applySync: (listId: string, res: SyncResponse, sentOpIds: string[]) => RemoteSummary | null
+  updateShare: (listId: string, patch: Partial<ListShare>) => void
+  /** Volta a ser uma lista só deste celular (parou de compartilhar, saiu, ou dispensou o aviso). */
+  unshare: (listId: string) => void
 }
 
 /** Adaptador: Preferences grava no SharedPreferences no Android e no localStorage na web. */
@@ -88,35 +110,18 @@ function mapItem(list: ShoppingList, itemId: string, fn: (i: ListItem) => ListIt
   return { ...list, items: list.items.map((i) => (i.id === itemId ? fn(i) : i)) }
 }
 
-/** Grava no catálogo o que o usuário decidiu para esse produto (setor, unidade, preço). */
-function remember(
-  catalog: Record<string, CatalogEntry>,
-  item: Pick<ListItem, 'productKey' | 'name' | 'sectorId' | 'unit' | 'expectedPrice'>,
-  countUse: boolean,
-  extra?: Pick<NewItemInput, 'image' | 'webRef'>,
-): Record<string, CatalogEntry> {
-  const prev = catalog[item.productKey]
-  const entry: CatalogEntry = {
-    key: item.productKey,
-    name: item.name,
-    sectorId: item.sectorId,
-    unit: item.unit,
-    lastExpected: item.expectedPrice ?? prev?.lastExpected ?? null,
-    paid: prev?.paid ?? [],
-    timesUsed: (prev?.timesUsed ?? 0) + (countUse ? 1 : 0),
-    image: extra?.image !== undefined ? extra.image : (prev?.image ?? null),
-    webRef: extra?.webRef !== undefined ? extra.webRef : (prev?.webRef ?? null),
-  }
-  return { ...catalog, [item.productKey]: entry }
+const isLive = (list: ShoppingList | undefined) => !!list?.share && !list.share.ended
+
+/** Põe as alterações na fila de envio — só se a lista estiver compartilhada. */
+function queue(s: State, listId: string, ops: Op[]): Partial<State> {
+  if (ops.length === 0 || !isLive(s.lists.find((l) => l.id === listId))) return {}
+  return { outbox: { ...s.outbox, [listId]: [...(s.outbox[listId] ?? []), ...ops] } }
 }
 
-/** Troca o mercado dos preços pagos que vieram de uma lista. */
-function remapListMarket(catalog: Record<string, CatalogEntry>, listId: string, marketId: string | null): Record<string, CatalogEntry> {
-  const out: Record<string, CatalogEntry> = {}
-  for (const [k, e] of Object.entries(catalog)) {
-    out[k] = e.paid.some((p) => p.listId === listId) ? { ...e, paid: e.paid.map((p) => (p.listId === listId ? { ...p, marketId } : p)) } : e
-  }
-  return out
+/** Quem adicionou: só marca em lista compartilhada. */
+const author = (s: State, listId: string) => {
+  const list = s.lists.find((l) => l.id === listId)
+  return isLive(list) ? list!.share!.memberId : undefined
 }
 
 export const useStore = create<State>()(
@@ -128,6 +133,8 @@ export const useStore = create<State>()(
       markets: [],
       // Padrão = o visual de sempre (verde claro); quem quiser muda em Ajustes.
       settings: { themeMode: 'light', accent: 'verde' },
+      device: null,
+      outbox: {},
 
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
 
@@ -168,7 +175,13 @@ export const useStore = create<State>()(
       updateList: (id, patch) =>
         set((s) => {
           const lists = mapList(s.lists, id, (l) => ({ ...l, ...patch }))
-          return patch.marketId !== undefined ? { lists, catalog: remapListMarket(s.catalog, id, patch.marketId) } : { lists }
+          const op = listOp({
+            ...(patch.name !== undefined ? { name: patch.name } : {}),
+            ...(patch.date !== undefined ? { date: patch.date } : {}),
+            ...(patch.marketId !== undefined ? { market: marketRef(s.markets, patch.marketId) } : {}),
+          })
+          const catalog = patch.marketId !== undefined ? remapListMarket(s.catalog, id, patch.marketId) : s.catalog
+          return { lists, catalog, ...queue(s, id, [op]) }
         }),
 
       deleteList: (id) =>
@@ -176,17 +189,22 @@ export const useStore = create<State>()(
           // Tira do histórico de preços os pontos que vieram dessa lista.
           const catalog: Record<string, CatalogEntry> = {}
           for (const [k, e] of Object.entries(s.catalog)) catalog[k] = { ...e, paid: e.paid.filter((p) => p.listId !== id) }
-          return { lists: s.lists.filter((l) => l.id !== id), catalog }
+          const outbox = { ...s.outbox }
+          delete outbox[id]
+          return { lists: s.lists.filter((l) => l.id !== id), catalog, outbox }
         }),
 
       setFinished: (id, finished, marketId) =>
         set((s) => {
+          const finishedAt = finished ? new Date().toISOString() : null
           const lists = mapList(s.lists, id, (l) => ({
             ...l,
-            finishedAt: finished ? new Date().toISOString() : null,
+            finishedAt,
             ...(marketId !== undefined ? { marketId } : {}),
           }))
-          return marketId !== undefined ? { lists, catalog: remapListMarket(s.catalog, id, marketId) } : { lists }
+          const op = listOp({ finishedAt, ...(marketId !== undefined ? { market: marketRef(s.markets, marketId) } : {}) })
+          const catalog = marketId !== undefined ? remapListMarket(s.catalog, id, marketId) : s.catalog
+          return { lists, catalog, ...queue(s, id, [op]) }
         }),
 
       addItem: (listId, input) =>
@@ -198,9 +216,17 @@ export const useStore = create<State>()(
           const existing = list.items.find((i) => i.productKey === key)
           let item: ListItem
           let lists: ShoppingList[]
+          let op: Op
           if (existing) {
             item = { ...existing, qty: existing.qty + input.qty, sectorId: input.sectorId, unit: input.unit, expectedPrice: input.expectedPrice ?? existing.expectedPrice }
             lists = mapList(s.lists, listId, (l) => mapItem(l, existing.id, () => item))
+            op = patchItemOp(item.id, {
+              qty: item.qty,
+              sectorId: item.sectorId,
+              unit: item.unit,
+              expectedPrice: item.expectedPrice,
+              ...(input.image !== undefined ? { image: input.image } : {}),
+            })
           } else {
             item = {
               id: uid(),
@@ -214,10 +240,12 @@ export const useStore = create<State>()(
               actualQty: null,
               actualPrice: null,
               checkedAt: null,
+              ...(author(s, listId) ? { createdBy: author(s, listId) } : {}),
             }
             lists = mapList(s.lists, listId, (l) => ({ ...l, items: [...l.items, item] }))
+            op = createItemOp(item, input.image !== undefined ? input.image : (s.catalog[key]?.image ?? null))
           }
-          return { lists, catalog: remember(s.catalog, item, !existing, input) }
+          return { lists, catalog: remember(s.catalog, item, !existing, input), ...queue(s, listId, [...sectorOps(s.sectors, item.sectorId), op]) }
         }),
 
       updateItem: (listId, itemId, input) =>
@@ -231,7 +259,18 @@ export const useStore = create<State>()(
               return updated
             }),
           )
-          return updated ? { lists, catalog: remember(s.catalog, updated, false, input) } : s
+          if (!updated) return s
+          const u: ListItem = updated
+          const op = patchItemOp(itemId, {
+            productKey: u.productKey,
+            name: u.name,
+            sectorId: u.sectorId,
+            unit: u.unit,
+            qty: u.qty,
+            expectedPrice: u.expectedPrice,
+            ...(input.image !== undefined ? { image: input.image } : {}),
+          })
+          return { lists, catalog: remember(s.catalog, u, false, input), ...queue(s, listId, [...sectorOps(s.sectors, u.sectorId), op]) }
         }),
 
       moveItem: (listId, itemId, sectorId) =>
@@ -244,30 +283,26 @@ export const useStore = create<State>()(
             }),
           )
           // É aqui que o setor fica "aprendido" para as próximas listas.
-          return moved ? { lists, catalog: remember(s.catalog, moved, false) } : s
+          return moved
+            ? { lists, catalog: remember(s.catalog, moved, false), ...queue(s, listId, [...sectorOps(s.sectors, sectorId), patchItemOp(itemId, { sectorId })]) }
+            : s
         }),
 
       removeItem: (listId, itemId) =>
-        set((s) => ({ lists: mapList(s.lists, listId, (l) => ({ ...l, items: l.items.filter((i) => i.id !== itemId) })) })),
+        set((s) => ({
+          lists: mapList(s.lists, listId, (l) => ({ ...l, items: l.items.filter((i) => i.id !== itemId) })),
+          ...queue(s, listId, [deleteItemOp(itemId)]),
+        })),
 
       checkItem: (listId, itemId, actualQty, actualPrice) =>
         set((s) => {
           const list = s.lists.find((l) => l.id === listId)
           const item = list?.items.find((i) => i.id === itemId)
           if (!list || !item) return s
-          const lists = mapList(s.lists, listId, (l) =>
-            mapItem(l, itemId, (i) => ({ ...i, checked: true, actualQty, actualPrice, checkedAt: new Date().toISOString() })),
-          )
-          let catalog = s.catalog
-          if (actualPrice != null) {
-            catalog = remember(catalog, item, false)
-            const entry = catalog[item.productKey]
-            const paid = [{ price: actualPrice, date: list.date, listId, marketId: list.marketId ?? null }, ...entry.paid.filter((p) => p.listId !== listId)]
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .slice(0, MAX_PRICE_HISTORY)
-            catalog = { ...catalog, [item.productKey]: { ...entry, paid } }
-          }
-          return { lists, catalog }
+          const checkedAt = new Date().toISOString()
+          const lists = mapList(s.lists, listId, (l) => mapItem(l, itemId, (i) => ({ ...i, checked: true, actualQty, actualPrice, checkedAt })))
+          const catalog = actualPrice != null ? recordPaid(s.catalog, item, list, actualPrice) : s.catalog
+          return { lists, catalog, ...queue(s, listId, [patchItemOp(itemId, { checked: true, actualQty, actualPrice, checkedAt })]) }
         }),
 
       uncheckItem: (listId, itemId) =>
@@ -277,9 +312,11 @@ export const useStore = create<State>()(
           const lists = mapList(s.lists, listId, (l) =>
             mapItem(l, itemId, (i) => ({ ...i, checked: false, actualQty: null, actualPrice: null, checkedAt: null })),
           )
-          const entry = s.catalog[item.productKey]
-          const catalog = entry ? { ...s.catalog, [item.productKey]: { ...entry, paid: entry.paid.filter((p) => p.listId !== listId) } } : s.catalog
-          return { lists, catalog }
+          return {
+            lists,
+            catalog: unrecordPaid(s.catalog, item.productKey, listId),
+            ...queue(s, listId, [patchItemOp(itemId, { checked: false, actualQty: null, actualPrice: null, checkedAt: null })]),
+          }
         }),
 
       addSector: (name, emoji) => {
@@ -312,28 +349,79 @@ export const useStore = create<State>()(
           const reassign = (sectorId: string) => (sectorId === id ? FALLBACK_SECTOR : sectorId)
           const catalog: Record<string, CatalogEntry> = {}
           for (const [k, e] of Object.entries(s.catalog)) catalog[k] = { ...e, sectorId: reassign(e.sectorId) }
+          // Nas listas compartilhadas, os itens que estavam no setor apagado mudam de setor para todos.
+          let outbox = s.outbox
+          for (const l of s.lists) {
+            const ops = l.items.filter((i) => i.sectorId === id).map((i) => patchItemOp(i.id, { sectorId: FALLBACK_SECTOR }))
+            const q = queue({ ...s, outbox }, l.id, ops)
+            if (q.outbox) outbox = q.outbox
+          }
           return {
             sectors: s.sectors.filter((x) => x.id !== id),
             lists: s.lists.map((l) => ({ ...l, items: l.items.map((i) => ({ ...i, sectorId: reassign(i.sectorId) })) })),
             catalog,
+            outbox,
           }
         }),
 
       addMarket: (market) => {
-        const { markets } = get()
-        const nameKey = productKey(market.name)
-        const existing = markets.find((m) => (market.osmId && m.osmId === market.osmId) || (!market.osmId && productKey(m.name) === nameKey))
-        if (existing) return existing.id
-        const id = uid()
-        set({ markets: [...markets, { ...market, name: market.name.trim(), id }] })
+        const { markets, id } = upsertMarket(get().markets, market)
+        if (markets !== get().markets) set({ markets })
         return id
       },
+
+      setDeviceName: (name) => {
+        const device: Device = { id: get().device?.id ?? crypto.randomUUID(), name: name.trim() }
+        set({ device })
+        return device
+      },
+
+      startSharing: (listId, res) =>
+        set((s) => ({
+          lists: mapList(s.lists, listId, (l) => ({
+            ...l,
+            share: {
+              remoteId: res.listId,
+              token: res.token,
+              memberId: res.memberId,
+              isOwner: true,
+              code: res.code,
+              seq: res.seq,
+              members: res.members,
+              lastSyncAt: new Date().toISOString(),
+              ended: null,
+            },
+          })),
+          outbox: { ...s.outbox, [listId]: [] },
+        })),
+
+      joinShared: (res) => {
+        const { patch, listId } = mergeJoin(get(), res)
+        set(patch)
+        return listId
+      },
+
+      applySync: (listId, res, sentOpIds) => {
+        const merged = mergeSync(get(), listId, res, new Set(sentOpIds))
+        if (!merged) return null
+        set(merged.patch)
+        return merged.summary
+      },
+
+      updateShare: (listId, patch) => set((s) => ({ lists: mapList(s.lists, listId, (l) => (l.share ? { ...l, share: { ...l.share, ...patch } } : l)) })),
+
+      unshare: (listId) =>
+        set((s) => {
+          const outbox = { ...s.outbox }
+          delete outbox[listId]
+          return { lists: mapList(s.lists, listId, (l) => ({ ...l, share: null, items: l.items.map(({ createdBy: _, ...i }) => i) })), outbox }
+        }),
     }),
     {
       name: 'lista-compras',
       version: 1,
       storage: createJSONStorage(() => preferencesStorage),
-      partialize: (s) => ({ lists: s.lists, sectors: s.sectors, catalog: s.catalog, markets: s.markets, settings: s.settings }),
+      partialize: (s) => ({ lists: s.lists, sectors: s.sectors, catalog: s.catalog, markets: s.markets, settings: s.settings, device: s.device, outbox: s.outbox }),
     },
   ),
 )

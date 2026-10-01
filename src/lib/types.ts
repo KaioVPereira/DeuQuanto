@@ -32,6 +32,31 @@ export interface ListItem {
   actualQty: number | null
   actualPrice: number | null
   checkedAt: string | null
+  /** Lista compartilhada: membro que adicionou (null = já estava na lista quando foi compartilhada). */
+  createdBy?: string | null
+}
+
+export interface ShareMember {
+  id: string
+  name: string
+  isOwner: boolean
+}
+
+/** Presente quando a lista está compartilhada (ou esteve — ver `ended`). */
+export interface ListShare {
+  /** Id da lista no servidor (o id local continua o mesmo de antes de compartilhar). */
+  remoteId: string
+  token: string
+  /** Quem é este celular dentro da lista. */
+  memberId: string
+  isOwner: boolean
+  code: string
+  /** Até onde este celular já recebeu as alterações. */
+  seq: number
+  members: ShareMember[]
+  lastSyncAt: string | null
+  /** A dona parou de compartilhar ou te tiraram: a lista fica como cópia só deste celular. */
+  ended?: 'closed' | 'removed' | null
 }
 
 export interface ShoppingList {
@@ -44,6 +69,7 @@ export interface ShoppingList {
   /** Onde pretende comprar; ao finalizar vira onde comprou de fato. Ausente em listas antigas. */
   marketId?: string | null
   items: ListItem[]
+  share?: ListShare | null
 }
 
 export interface Market {

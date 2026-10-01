@@ -18,6 +18,22 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Convite de lista compartilhada: o link https abre direto no app (App Links,
+                 verificado pelo /.well-known/assetlinks.json do servidor)... -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="deuquanto.gamestrackers.com" android:pathPrefix="/c/" />
+            </intent-filter>
+            <!-- ...e, se o Android abrir o link no navegador, o botão da página usa este esquema. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="deuquanto" android:host="c" />
+            </intent-filter>
         </activity>
 
         <provider
