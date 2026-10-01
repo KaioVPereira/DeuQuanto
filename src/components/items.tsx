@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRightLeft, Check, Pencil, ShoppingCart, Trash2, Undo2 } from 'lucide-react'
+import { ArrowRightLeft, Check, Pencil, ShoppingCart, ShoppingCartPlus, Trash2, Undo2 } from 'lucide-react'
 import { Sheet } from './Sheet'
 import { SectorGrid } from './inputs'
 import { DeltaChip, MenuItem } from './ui'
@@ -32,12 +32,17 @@ export function ItemRow({
 
   return (
     <div className={`flex items-center gap-1 rounded-2xl bg-card pr-3 ${item.checked ? 'opacity-70' : ''}`}>
-      <button onClick={onCheck} className="grid w-12 shrink-0 place-items-center self-stretch" aria-label={item.checked ? 'Alterar confirmação' : 'Confirmar no carrinho'}>
-        <span
-          className={`grid size-7 place-items-center rounded-full border-2 transition ${item.checked ? 'border-brand bg-brand text-on-brand' : 'border-faint'}`}
-        >
-          {item.checked && <Check size={16} strokeWidth={3} />}
-        </span>
+      <button onClick={onCheck} className="group grid w-12 shrink-0 place-items-center self-stretch" aria-label={item.checked ? 'Alterar confirmação' : 'Confirmar no carrinho'}>
+        {item.checked ? (
+          <span className="grid size-7 place-items-center rounded-full border-2 border-brand bg-brand text-on-brand">
+            <Check size={16} strokeWidth={3} />
+          </span>
+        ) : (
+          // Fora do carrinho: cara de botão (fundo + carrinho com "+"), não de marcador de lista.
+          <span className="grid size-[38px] place-items-center rounded-xl bg-brand-soft text-brand-strong transition group-active:scale-90">
+            <ShoppingCartPlus size={20} strokeWidth={2.2} />
+          </span>
+        )}
       </button>
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left">
         <span className="relative shrink-0">
