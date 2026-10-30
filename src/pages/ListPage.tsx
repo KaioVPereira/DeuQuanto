@@ -63,7 +63,12 @@ function ListView({ list }: { list: ShoppingList }) {
 
       <div className="space-y-4 px-4 pt-1">
         {list.share && <SharedBanner list={list} onClick={() => setSharing(true)} />}
-        <SummaryCard totals={totals} finished={!!list.finishedAt} market={<MarketChip market={market} onClick={() => setEditing(true)} placeholder="Em qual mercado?" />} />
+        <SummaryCard
+          totals={totals}
+          finished={!!list.finishedAt}
+          onOpen={() => navigate(`/lista/${list.id}/carrinho`)}
+          market={<MarketChip market={market} onClick={() => setEditing(true)} placeholder="Em qual mercado?" />}
+        />
 
         {list.items.length === 0 ? (
           <HowItWorks />
@@ -238,10 +243,19 @@ function HowItWorks() {
   )
 }
 
-function SummaryCard({ totals: t, finished, market }: { totals: Totals; finished: boolean; market: React.ReactNode }) {
+/** Resumo da lista; tocar abre o carrinho (o chip do mercado continua sendo só dele). */
+function SummaryCard({ totals: t, finished, market, onOpen }: { totals: Totals; finished: boolean; market: React.ReactNode; onOpen: () => void }) {
   return (
-    <div className="rounded-3xl bg-card p-4 shadow-sm shadow-black/5">
-      <div className="mb-3">{market}</div>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
+      className="cursor-pointer rounded-3xl bg-card p-4 shadow-sm shadow-black/5 transition active:scale-[0.99]"
+    >
+      <div className="mb-3 w-fit" onClick={(e) => e.stopPropagation()}>
+        {market}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <div className="text-sm text-muted">Esperado</div>
@@ -267,6 +281,12 @@ function SummaryCard({ totals: t, finished, market }: { totals: Totals; finished
           <DeltaChip actual={t.actual} expected={t.expectedOfBought} />
         </div>
       )}
+      <div className="mt-3 flex items-center justify-between border-t border-line pt-3 text-sm font-semibold text-brand-strong">
+        <span className="flex items-center gap-2">
+          <ShoppingCart size={17} /> Ver o carrinho{t.checkedCount > 0 && ` (${t.checkedCount})`}
+        </span>
+        <ChevronRight size={18} />
+      </div>
     </div>
   )
 }

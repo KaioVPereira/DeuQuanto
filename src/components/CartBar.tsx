@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { CircleCheckBig, Plus, RotateCcw } from 'lucide-react'
 import { Sheet } from './Sheet'
 import { Label } from './inputs'
@@ -15,13 +16,14 @@ import type { ShoppingList } from '@/lib/types'
  */
 export function CartBar({ list, onAdd, onFinish }: { list: ShoppingList; onAdd: () => void; onFinish: () => void }) {
   const setFinished = useStore((s) => s.setFinished)
+  const navigate = useNavigate()
   const t = totalsOf(list.items)
   const finished = !!list.finishedAt
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card shadow-[0_-8px_24px_-16px_rgba(0,0,0,0.25)]" style={{ paddingBottom: 'calc(var(--sab) + 0.75rem)' }}>
       <div className="flex items-center gap-2 px-4 pt-3">
-        <div className="min-w-0 flex-1">
+        <button onClick={() => navigate(`/lista/${list.id}/carrinho`)} className="-my-1 min-w-0 flex-1 rounded-xl py-1 text-left active:bg-bg">
           <div className="tabular text-xs text-muted">
             {finished ? 'Compra finalizada' : 'No carrinho'} · {t.checkedCount} de {t.itemCount}
           </div>
@@ -29,7 +31,7 @@ export function CartBar({ list, onAdd, onFinish }: { list: ShoppingList; onAdd: 
             {formatMoney(t.actual)}
             {t.expected > 0 && <span className="ml-1.5 text-sm font-medium text-muted">de {formatMoney(t.expected)}</span>}
           </div>
-        </div>
+        </button>
         {finished ? (
           <button onClick={() => setFinished(list.id, false)} className="flex h-12 items-center gap-2 rounded-2xl bg-bg px-4 font-semibold active:bg-line">
             <RotateCcw size={18} /> Reabrir
