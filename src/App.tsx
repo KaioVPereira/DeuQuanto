@@ -7,6 +7,7 @@ import { initBackButton, isNative } from '@/lib/native'
 import { applyTheme, watchSystemMode } from '@/lib/theme'
 import { useSyncLoop } from '@/sync/engine'
 import { Toast } from '@/components/Toast'
+import { UpdateNotice } from '@/components/UpdateNotice'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { HomePage } from '@/pages/HomePage'
 import { ListPage } from '@/pages/ListPage'
@@ -26,6 +27,7 @@ export function App() {
       <SyncLoop />
       <InviteLinks />
       <Toast />
+      <UpdateNotice />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/lista/:id" element={<ListPage />} />
