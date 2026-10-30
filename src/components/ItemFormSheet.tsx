@@ -11,7 +11,8 @@ import { searchPriceOnWeb } from '@/lib/native'
 import { searchProducts } from '@/lib/web'
 import type { CatalogEntry, ListItem, Unit, WebProduct } from '@/lib/types'
 
-export type ItemFormMode = { kind: 'add'; defaultSectorId?: string } | { kind: 'edit'; item: ListItem }
+/** `toCart`: aberto de dentro do "Cheguei no mercado" — já começa em "Já no carrinho". */
+export type ItemFormMode = { kind: 'add'; defaultSectorId?: string; toCart?: boolean } | { kind: 'edit'; item: ListItem }
 
 interface Props {
   open: boolean
@@ -40,10 +41,9 @@ function ItemForm({ onClose, listId, mode }: Props) {
 
   const editing = mode.kind === 'edit' ? mode.item : null
   // No mercado aparece coisa que não estava na lista: dá para já pôr direto no carrinho.
-  // No modo mercado (ou com algo já no carrinho), esse vira o padrão.
-  const atMarket = useStore((s) => !!s.shopping[listId])
+  // Em casa o padrão é só na lista; dentro do "Cheguei no mercado", já no carrinho.
   const canGoToCart = mode.kind === 'add' && !list?.finishedAt
-  const [toCart, setToCart] = useState(canGoToCart && (atMarket || !!list?.items.some((i) => i.checked)))
+  const [toCart, setToCart] = useState(canGoToCart && mode.kind === 'add' && !!mode.toCart)
   const initialSector = editing?.sectorId ?? (mode.kind === 'add' ? (mode.defaultSectorId ?? null) : null)
 
   const [name, setName] = useState(editing?.name ?? '')

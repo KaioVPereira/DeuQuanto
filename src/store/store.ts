@@ -55,13 +55,10 @@ interface State {
   device: Device | null
   /** Alterações de listas compartilhadas ainda não confirmadas pelo servidor, por lista. */
   outbox: Record<string, Op[]>
-  /** Listas em que este celular está "no mercado" (só daqui, não sincroniza). */
-  shopping: Record<string, true>
   /** Dicas de uso já vistas/dispensadas. */
   tipsSeen: Record<string, true>
 
   setSettings: (patch: Partial<State['settings']>) => void
-  setShopping: (listId: string, on: boolean) => void
   dismissTip: (id: string) => void
   createList: (name: string, date: string, copyFromId?: string | null, marketId?: string | null) => string
   updateList: (id: string, patch: Partial<Pick<ShoppingList, 'name' | 'date' | 'marketId'>>) => void
@@ -149,11 +146,9 @@ export const useStore = create<State>()(
       settings: { themeMode: 'light', accent: 'verde' },
       device: null,
       outbox: {},
-      shopping: {},
       tipsSeen: {},
 
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
-      setShopping: (listId, on) => set((s) => ({ shopping: withFlag(s.shopping, listId, on) })),
       dismissTip: (id) => set((s) => ({ tipsSeen: withFlag(s.tipsSeen, id, true) })),
 
       createList: (name, date, copyFromId, marketId) => {
@@ -209,7 +204,7 @@ export const useStore = create<State>()(
           for (const [k, e] of Object.entries(s.catalog)) catalog[k] = { ...e, paid: e.paid.filter((p) => p.listId !== id) }
           const outbox = { ...s.outbox }
           delete outbox[id]
-          return { lists: s.lists.filter((l) => l.id !== id), catalog, outbox, shopping: withFlag(s.shopping, id, false) }
+          return { lists: s.lists.filter((l) => l.id !== id), catalog, outbox }
         }),
 
       setFinished: (id, finished, marketId) =>
@@ -222,7 +217,7 @@ export const useStore = create<State>()(
           }))
           const op = listOp({ finishedAt, ...(marketId !== undefined ? { market: marketRef(s.markets, marketId) } : {}) })
           const catalog = marketId !== undefined ? remapListMarket(s.catalog, id, marketId) : s.catalog
-          return { lists, catalog, ...queue(s, id, [op]), ...(finished ? { shopping: withFlag(s.shopping, id, false) } : {}) }
+          return { lists, catalog, ...queue(s, id, [op]) }
         }),
 
       addItem: (listId, input) =>
@@ -323,8 +318,7 @@ export const useStore = create<State>()(
           return {
             lists,
             catalog,
-            // Pôs algo no carrinho: está no mercado, e a dica do botão do carrinho já foi entendida.
-            shopping: withFlag(s.shopping, listId, true),
+            // Pôs algo no carrinho: a dica de como fazer isso já foi entendida.
             tipsSeen: withFlag(s.tipsSeen, 'cart-button', true),
             ...queue(s, listId, [patchItemOp(itemId, { checked: true, actualQty, actualPrice, checkedAt })]),
           }
@@ -454,7 +448,6 @@ export const useStore = create<State>()(
         settings: s.settings,
         device: s.device,
         outbox: s.outbox,
-        shopping: s.shopping,
         tipsSeen: s.tipsSeen,
       }),
     },

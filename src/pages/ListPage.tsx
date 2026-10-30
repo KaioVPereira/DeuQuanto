@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, ChevronRight, CircleCheckBig, Lightbulb, MoreVertical, Pencil, Plus, RotateCcw, ShoppingCart, Trash2, Users, X } from 'lucide-react'
+import { CheckCircle2, ChevronRight, CircleCheckBig, List, Lightbulb, MoreVertical, Pencil, Plus, RotateCcw, ShoppingCart, Trash2, Users, X } from 'lucide-react'
 import { DeltaChip, Header, MenuItem, ProgressBar } from '@/components/ui'
 import { Sheet } from '@/components/Sheet'
 import { EditListSheet } from '@/components/ListSheets'
@@ -10,8 +10,8 @@ import { ShareSheet } from '@/components/ShareSheet'
 import { SharedBanner } from '@/components/SharedBanner'
 import { useLiveSync } from '@/sync/engine'
 import { api } from '@/sync/api'
-import { MarketChip } from '@/components/media'
-import { pendingFirst, useItemSheets } from '@/components/items'
+import { MarketChip, ProductThumb } from '@/components/media'
+import { pendingFirst } from '@/components/items'
 import { useList, useMarket, useStore } from '@/store/store'
 import { totalsOf, type Totals } from '@/lib/calc'
 import { formatDateLong, formatMoney } from '@/lib/format'
@@ -29,8 +29,6 @@ function ListView({ list }: { list: ShoppingList }) {
   const navigate = useNavigate()
   const market = useMarket(list.marketId)
   const sectors = useStore((s) => s.sectors)
-  const atMarket = useStore((s) => !!s.shopping[list.id])
-  const setShopping = useStore((s) => s.setShopping)
   const tipSeen = useStore((s) => !!s.tipsSeen['cart-button'])
   const dismissTip = useStore((s) => s.dismissTip)
   const setFinished = useStore((s) => s.setFinished)
@@ -40,21 +38,14 @@ function ListView({ list }: { list: ShoppingList }) {
   const [editing, setEditing] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [sharing, setSharing] = useState(false)
-  const [showCart, setShowCart] = useState(false)
-  const { row, sheets } = useItemSheets(list)
+  const catalog = useStore((s) => s.catalog)
 
   const live = !!list.share && !list.share.ended
 
   const totals = totalsOf(list.items)
   const finished = !!list.finishedAt
-  // Modo mercado: só o que falta pegar fica nos setores; o que já está no carrinho vai para o fim.
-  const shopping = atMarket && !finished
-  const inCart = list.items.filter((i) => i.checked)
   const groups = sectors
-    .map((sector) => {
-      const all = list.items.filter((i) => i.sectorId === sector.id)
-      return { sector, all, items: shopping ? all.filter((i) => !i.checked) : pendingFirst(all) }
-    })
+    .map((sector) => ({ sector, items: pendingFirst(list.items.filter((i) => i.sectorId === sector.id)) }))
     .filter((g) => g.items.length > 0)
 
   return (
@@ -78,84 +69,73 @@ function ListView({ list }: { list: ShoppingList }) {
           <HowItWorks />
         ) : (
           <>
-            {!finished &&
-              (shopping ? (
-                <div className="flex items-center gap-3 rounded-2xl bg-brand px-4 py-3 text-on-brand">
-                  <ShoppingCart size={22} className="shrink-0" />
-                  <div className="min-w-0 flex-1 text-sm leading-snug">
-                    <div className="font-bold">Você está no mercado</div>
-                    Pegou o produto? Toque no carrinho ao lado dele e digite o preço da gôndola.
+            {!finished && (
+              <>
+                <button
+                  onClick={() => navigate(`/lista/${list.id}/mercado`)}
+                  className="flex w-full items-center gap-3 rounded-2xl bg-brand px-4 py-3.5 text-left text-on-brand shadow-sm active:bg-brand-press"
+                >
+                  <ShoppingCart size={24} className="shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-lg leading-tight font-bold">Cheguei no mercado</div>
+                    <div className="text-sm opacity-85">Escolha o setor e vá pondo no carrinho</div>
                   </div>
-                  <button onClick={() => setShopping(list.id, false)} className="shrink-0 rounded-xl bg-white/15 px-3 py-2 text-xs font-semibold active:bg-white/25">
-                    Voltar a montar
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setShopping(list.id, true)}
-                    className="flex w-full items-center gap-3 rounded-2xl bg-brand px-4 py-3.5 text-left text-on-brand shadow-sm active:bg-brand-press"
-                  >
-                    <ShoppingCart size={24} className="shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-lg leading-tight font-bold">Cheguei no mercado</div>
-                      <div className="text-sm opacity-85">Mostra só o que falta pegar</div>
-                    </div>
-                    <ChevronRight size={20} />
-                  </button>
-                  {!tipSeen && (
-                    <div className="flex gap-3 rounded-2xl bg-card p-3 text-sm shadow-sm shadow-black/5">
-                      <Lightbulb size={20} className="mt-0.5 shrink-0 text-brand" />
-                      <div className="flex-1">
-                        No mercado, toque no <ShoppingCart size={15} className="inline align-[-2px] text-brand-strong" /> ao lado de cada item que pegar e digite o
-                        preço da gôndola. É assim que o app soma o carrinho e mostra quanto deu.
-                      </div>
-                      <button onClick={() => dismissTip('cart-button')} className="-m-1 self-start rounded-full p-1 text-muted active:bg-line" aria-label="Entendi">
-                        <X size={18} />
-                      </button>
-                    </div>
-                  )}
-                </>
-              ))}
-
-            {groups.map(({ sector, all, items }) => {
-              const t = totalsOf(all)
-              return (
-                <section key={sector.id}>
-                  <button
-                    onClick={() => navigate(`/lista/${list.id}/setor/${sector.id}`)}
-                    className="mb-2 flex w-full items-center gap-2 rounded-xl px-1 py-1 text-left active:bg-line"
-                  >
-                    <span className="text-xl leading-none">{sector.emoji}</span>
-                    <span className="min-w-0 flex-1 truncate font-bold">{sector.name}</span>
-                    <span className="tabular text-sm text-muted">
-                      {t.checkedCount}/{t.itemCount}
-                    </span>
-                    <ChevronRight size={16} className="text-faint" />
-                  </button>
-                  <div className="space-y-2">{items.map(row)}</div>
-                </section>
-              )
-            })}
-
-            {shopping && groups.length === 0 && (
-              <div className="rounded-3xl bg-brand-soft px-6 py-8 text-center font-semibold text-brand-strong">
-                Tudo no carrinho! Toque em <b>Finalizar</b> quando passar no caixa.
-              </div>
-            )}
-
-            {shopping && inCart.length > 0 && (
-              <section>
-                <button onClick={() => setShowCart((v) => !v)} className="mb-2 flex w-full items-center gap-2 rounded-xl px-1 py-1 text-left active:bg-line">
-                  <CircleCheckBig size={20} className="text-brand" />
-                  <span className="flex-1 font-bold">
-                    No carrinho <span className="tabular font-medium text-muted">({inCart.length})</span>
-                  </span>
-                  <ChevronDown size={18} className={`text-faint transition ${showCart ? 'rotate-180' : ''}`} />
+                  <ChevronRight size={20} />
                 </button>
-                {showCart && <div className="space-y-2">{inCart.map(row)}</div>}
-              </section>
+                {!tipSeen && (
+                  <div className="flex gap-3 rounded-2xl bg-card p-3 text-sm shadow-sm shadow-black/5">
+                    <Lightbulb size={20} className="mt-0.5 shrink-0 text-brand" />
+                    <div className="flex-1">
+                      Chegou no mercado? Toque em <b>Cheguei no mercado</b>, escolha o setor e toque no{' '}
+                      <ShoppingCart size={15} className="inline align-[-2px] text-brand-strong" /> de cada produto que pegar, com o preço da gôndola.
+                    </div>
+                    <button onClick={() => dismissTip('cart-button')} className="-m-1 self-start rounded-full p-1 text-muted active:bg-line" aria-label="Entendi">
+                      <X size={18} />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
+
+            {/* Em casa: só os setores. Tocar abre os produtos dele (sem o carrinho — isso é no "Cheguei no mercado"). */}
+            <div className="space-y-2.5">
+              {groups.map(({ sector, items }) => {
+                const t = totalsOf(items)
+                const complete = t.checkedCount === t.itemCount
+                return (
+                  <button
+                    key={sector.id}
+                    onClick={() => navigate(`/lista/${list.id}/setor/${sector.id}`)}
+                    className={`w-full rounded-3xl p-4 text-left shadow-sm shadow-black/5 active:scale-[0.99] ${complete ? 'bg-brand-soft' : 'bg-card'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl leading-none">{sector.emoji}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-lg font-bold">{sector.name}</div>
+                        <div className="tabular text-sm text-muted">
+                          {t.itemCount} {t.itemCount === 1 ? 'item' : 'itens'}
+                          {t.expected > 0 && ` · est. ${formatMoney(t.expected)}`}
+                          {t.checkedCount > 0 && ` · ${t.checkedCount} no carrinho`}
+                        </div>
+                      </div>
+                      {complete ? <CheckCircle2 size={24} className="text-brand" /> : <ChevronRight size={20} className="text-faint" />}
+                    </div>
+                    <div className="mt-3 flex items-center gap-1.5">
+                      {items.slice(0, 6).map((i) => (
+                        <ProductThumb key={i.id} image={catalog[i.productKey]?.image} fallback={sector.emoji} size={34} className={i.checked ? 'opacity-40' : ''} />
+                      ))}
+                      {items.length > 6 && <span className="tabular pl-1 text-sm font-semibold text-muted">+{items.length - 6}</span>}
+                    </div>
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => navigate(`/lista/${list.id}/setor/todos`)}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-brand-strong active:bg-brand-soft"
+              >
+                <List size={18} /> Ver a lista completa
+              </button>
+            </div>
           </>
         )}
       </div>
@@ -166,7 +146,6 @@ function ListView({ list }: { list: ShoppingList }) {
       <EditListSheet list={list} open={editing} onClose={() => setEditing(false)} />
       <FinishSheet list={list} open={finishing} onClose={() => setFinishing(false)} onFinished={() => navigate('/', { replace: true })} />
       <ShareSheet list={list} open={sharing} onClose={() => setSharing(false)} />
-      {sheets}
 
       <Sheet open={menu} onClose={() => setMenu(false)} title={list.name}>
         <div className="-mx-2">
@@ -238,7 +217,7 @@ function ListView({ list }: { list: ShoppingList }) {
 function HowItWorks() {
   const steps = [
     { icon: <Plus size={18} strokeWidth={2.5} />, text: <>Em casa, toque no <b className="text-ink">+</b> e monte a lista com o preço que você espera pagar.</> },
-    { icon: <ShoppingCart size={18} />, text: <>No mercado, toque em <b className="text-ink">Cheguei no mercado</b> e no carrinho ao lado de cada item que pegar, com o preço da gôndola.</> },
+    { icon: <ShoppingCart size={18} />, text: <>No mercado, toque em <b className="text-ink">Cheguei no mercado</b>, escolha o setor e toque no carrinho de cada produto que pegar, com o preço da gôndola.</> },
     { icon: <CircleCheckBig size={18} />, text: <>No caixa, toque em <b className="text-ink">Finalizar</b> e veja quanto deu.</> },
   ]
   return (

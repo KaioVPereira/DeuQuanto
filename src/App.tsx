@@ -15,6 +15,7 @@ import { SectorPage } from '@/pages/SectorPage'
 import { SectorsPage } from '@/pages/SectorsPage'
 import { JoinPage } from '@/pages/JoinPage'
 import { AppPage } from '@/pages/AppPage'
+import { MarketPage } from '@/pages/MarketPage'
 
 export function App() {
   const hydrated = useHydrated()
@@ -31,6 +32,8 @@ export function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/lista/:id" element={<ListPage />} />
+        <Route path="/lista/:id/mercado" element={<MarketPage />} />
+        <Route path="/lista/:id/mercado/:sectorId" element={<SectorPage market />} />
         <Route path="/lista/:id/setor/:sectorId" element={<SectorPage />} />
         <Route path="/setores" element={<SectorsPage />} />
         <Route path="/ajustes" element={<SettingsPage />} />

@@ -13,7 +13,8 @@ import type { ListItem, ShoppingList } from '@/lib/types'
 
 /**
  * Linhas de item com tudo o que um toque abre: pôr no carrinho, o menu do item e a edição.
- * `row(item)` desenha a linha; `sheets` vai uma vez no fim da página.
+ * `row(item)` desenha a linha com o carrinho (no mercado), `planRow(item)` sem ele (em casa);
+ * `sheets` vai uma vez no fim da página.
  */
 export function useItemSheets(list: ShoppingList) {
   const sectors = useStore((s) => s.sectors)
@@ -29,6 +30,17 @@ export function useItemSheets(list: ShoppingList) {
   const share = list.share
   const addedBy = (item: ListItem) =>
     share && item.createdBy && item.createdBy !== share.memberId ? (share.members.find((m) => m.id === item.createdBy)?.name ?? null) : null
+
+  const planRow = (item: ListItem) => (
+    <PlanRow
+      key={item.id}
+      item={item}
+      image={catalog[item.productKey]?.image}
+      fallback={sectors.find((s) => s.id === item.sectorId)?.emoji ?? '🛒'}
+      addedBy={addedBy(item)}
+      onClick={() => setActions(item)}
+    />
+  )
 
   const row = (item: ListItem) => (
     <ItemRow
@@ -62,7 +74,7 @@ export function useItemSheets(list: ShoppingList) {
     </>
   )
 
-  return { row, sheets }
+  return { row, planRow, sheets }
 }
 
 /** Os que faltam pegar primeiro, os do carrinho no fim. */
@@ -139,6 +151,27 @@ export function ItemRow({
         </div>
       </button>
     </div>
+  )
+}
+
+/** Linha sem o botão do carrinho (lista em casa): o produto e o estimado; tocar abre editar/mover/remover. */
+export function PlanRow({ item, image, fallback, addedBy, onClick }: { item: ListItem; image?: string | null; fallback: string; addedBy: string | null; onClick: () => void }) {
+  const exp = expectedLine(item)
+  const act = actualLine(item)
+  return (
+    <button onClick={onClick} className={`flex w-full items-center gap-3 px-4 py-2.5 text-left active:bg-bg ${item.checked ? 'opacity-60' : ''}`}>
+      <ProductThumb image={image} fallback={fallback} size={40} />
+      <div className="min-w-0 flex-1">
+        <div className={`truncate font-semibold ${item.checked ? 'line-through decoration-faint' : ''}`}>{item.name}</div>
+        <div className="tabular truncate text-sm text-muted">
+          {formatQty(item.checked ? (item.actualQty ?? item.qty) : item.qty)} {item.unit}
+          {item.checked ? ' · no carrinho' : item.expectedPrice != null ? ` · est. ${formatMoney(item.expectedPrice)}` : ' · sem preço'}
+          {addedBy && <span className="text-brand-strong"> · por {addedBy}</span>}
+        </div>
+      </div>
+      {item.checked ? <Check size={18} className="shrink-0 text-brand" /> : null}
+      <span className="tabular shrink-0 font-semibold text-muted">{formatMoney((item.checked ? act : exp) ?? 0)}</span>
+    </button>
   )
 }
 
