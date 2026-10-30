@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, History, Loader2, Search } from 'lucide-react'
+import { Check, History, ListPlus, Loader2, Search, ShoppingCart } from 'lucide-react'
 import { Sheet } from './Sheet'
 import { Label, MoneyInput, QtyInput, SectorGrid, TextField, UnitPicker } from './inputs'
 import { PrimaryButton } from './ui'
@@ -35,9 +35,15 @@ function ItemForm({ onClose, listId, mode }: Props) {
   const list = useStore((s) => s.lists.find((l) => l.id === listId))
   const addItem = useStore((s) => s.addItem)
   const updateItem = useStore((s) => s.updateItem)
+  const checkItem = useStore((s) => s.checkItem)
   const marketId = list?.marketId ?? null
 
   const editing = mode.kind === 'edit' ? mode.item : null
+  // No mercado aparece coisa que não estava na lista: dá para já pôr direto no carrinho.
+  // No modo mercado (ou com algo já no carrinho), esse vira o padrão.
+  const atMarket = useStore((s) => !!s.shopping[listId])
+  const canGoToCart = mode.kind === 'add' && !list?.finishedAt
+  const [toCart, setToCart] = useState(canGoToCart && (atMarket || !!list?.items.some((i) => i.checked)))
   const initialSector = editing?.sectorId ?? (mode.kind === 'add' ? (mode.defaultSectorId ?? null) : null)
 
   const [name, setName] = useState(editing?.name ?? '')
@@ -81,7 +87,8 @@ function ItemForm({ onClose, listId, mode }: Props) {
       setSectorFromMemory(true)
     }
     if (!touched.unit) setUnit(entry.unit)
-    if (!touched.price) setPrice(suggestedPrice(entry, marketId))
+    // Indo para o carrinho o preço é o da gôndola: não chuta, a pessoa digita (ou toca numa referência).
+    if (!touched.price && !toCart) setPrice(suggestedPrice(entry, marketId))
     if (!imageTouched && entry.image) {
       setImage(entry.image)
       setPicked(null)
@@ -125,7 +132,12 @@ function ItemForm({ onClose, listId, mode }: Props) {
     setImage(product?.image ?? null)
     setPicked(product)
     setImageTouched(true)
-    if (product?.price != null && price == null) setPrice(product.price)
+    if (product?.price != null && price == null && !toCart) setPrice(product.price)
+  }
+
+  const switchToCart = (cart: boolean) => {
+    setToCart(cart)
+    if (!touched.price) setPrice(cart ? null : suggestedPrice(entry, marketId))
   }
 
   const applySuggestion = (e: CatalogEntry) => {
@@ -134,7 +146,7 @@ function ItemForm({ onClose, listId, mode }: Props) {
     setShowSectors(false)
     setSectorFromMemory(true)
     setUnit(e.unit)
-    setPrice(suggestedPrice(e, marketId))
+    setPrice(toCart ? null : suggestedPrice(e, marketId))
     setTouched({ sector: false, price: false, unit: false })
     setImage(e.image ?? null)
     setImageTouched(!!e.image)
@@ -143,7 +155,9 @@ function ItemForm({ onClose, listId, mode }: Props) {
   }
 
   const sector = sectors.find((s) => s.id === sectorId)
-  const canSave = key.length > 0 && !!sectorId && qty > 0
+  const inCart = canGoToCart && toCart
+  const canSave = key.length > 0 && !!sectorId && qty > 0 && (!inCart || price != null)
+  const reference = suggestedPrice(entry, marketId)
   const avg = averagePaid(entry)
   const last = entry?.paid[0]
   const cheapest = cheapestMarket(entry)
@@ -159,8 +173,22 @@ function ItemForm({ onClose, listId, mode }: Props) {
       onClose()
       return
     }
-    addItem(listId, input)
-    setLastAdded(`${name.trim()} → ${sector?.emoji} ${sector?.name}`)
+    if (inCart && price != null) {
+      if (alreadyInList && !alreadyInList.checked) {
+        // Já estava planejado: só confere, mantendo o estimado da lista.
+        checkItem(listId, alreadyInList.id, qty, price)
+      } else {
+        // Fora do plano: o "esperado" é o histórico do produto; sem histórico, o próprio preço pago.
+        addItem(listId, { ...input, expectedPrice: alreadyInList?.expectedPrice ?? reference ?? price })
+        const added = useStore.getState().lists.find((l) => l.id === listId)?.items.find((i) => i.productKey === key)
+        const prevQty = alreadyInList ? (alreadyInList.actualQty ?? alreadyInList.qty) : 0
+        if (added) checkItem(listId, added.id, prevQty + qty, price)
+      }
+      setLastAdded(`${name.trim()} → 🛒 no carrinho · ${formatMoney(Math.round(price * qty))}`)
+    } else {
+      addItem(listId, input)
+      setLastAdded(`${name.trim()} → ${sector?.emoji} ${sector?.name}`)
+    }
     // Fica aberto para ir adicionando em sequência.
     setName('')
     setQty(1)
@@ -184,12 +212,30 @@ function ItemForm({ onClose, listId, mode }: Props) {
       onClose={onClose}
       title={editing ? 'Editar item' : 'Adicionar item'}
       footer={
-        <PrimaryButton disabled={!canSave} onClick={save}>
-          {editing ? 'Salvar' : alreadyInList ? `Somar à lista (${formatQty(alreadyInList.qty)} → ${formatQty(alreadyInList.qty + qty)})` : 'Adicionar à lista'}
-        </PrimaryButton>
+        inCart ? (
+          <PrimaryButton disabled={!canSave} onClick={save} className="flex items-center justify-center gap-2">
+            <ShoppingCart size={18} />
+            {price == null ? 'Informe o preço da gôndola' : `Pôr no carrinho · ${formatMoney(Math.round(price * qty))}`}
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton disabled={!canSave} onClick={save}>
+            {editing ? 'Salvar' : alreadyInList ? `Somar à lista (${formatQty(alreadyInList.qty)} → ${formatQty(alreadyInList.qty + qty)})` : 'Adicionar à lista'}
+          </PrimaryButton>
+        )
       }
     >
       <div className="space-y-5">
+        {canGoToCart && (
+          <div className="grid grid-cols-2 gap-1 rounded-2xl bg-bg p-1">
+            <ModeButton active={!toCart} onClick={() => switchToCart(false)} icon={<ListPlus size={18} />}>
+              Só na lista
+            </ModeButton>
+            <ModeButton active={toCart} onClick={() => switchToCart(true)} icon={<ShoppingCart size={18} />}>
+              Já no carrinho
+            </ModeButton>
+          </div>
+        )}
+
         {lastAdded && (
           <div className="animate-pop flex items-center gap-2 rounded-2xl bg-brand-soft px-3 py-2 text-sm font-medium text-brand-strong">
             <Check size={16} /> <span className="truncate">{lastAdded}</span>
@@ -239,7 +285,9 @@ function ItemForm({ onClose, listId, mode }: Props) {
           </div>
           {alreadyInList && (
             <div className="mt-1.5 text-sm text-over">
-              Já está na lista ({formatQty(alreadyInList.qty)} {alreadyInList.unit}) — a quantidade vai ser somada.
+              {inCart && !alreadyInList.checked
+                ? `Já está na lista (${formatQty(alreadyInList.qty)} ${alreadyInList.unit}) — vai para o carrinho.`
+                : `Já está ${alreadyInList.checked ? 'no carrinho' : 'na lista'} (${formatQty(alreadyInList.qty)} ${alreadyInList.unit}) — a quantidade vai ser somada.`}
             </div>
           )}
 
@@ -322,8 +370,9 @@ function ItemForm({ onClose, listId, mode }: Props) {
         </div>
 
         <div>
-          <Label>Preço médio estimado (por {unit})</Label>
+          <Label>{inCart ? `Preço na gôndola (por ${unit})` : `Preço médio estimado (por ${unit})`}</Label>
           <MoneyInput
+            placeholder={inCart && reference != null ? `Estimado ${formatMoney(reference)}` : undefined}
             value={price}
             onChange={(v) => {
               setPrice(v)
@@ -358,18 +407,20 @@ function ItemForm({ onClose, listId, mode }: Props) {
             </div>
           )}
 
-          <button
-            type="button"
-            disabled={!key}
-            onClick={() => searchPriceOnWeb(name)}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-line px-4 py-3 text-sm font-semibold text-ink active:bg-bg disabled:opacity-40"
-          >
-            <Search size={16} /> Pesquisar em outras lojas (Google)
-          </button>
+          {!inCart && (
+            <button
+              type="button"
+              disabled={!key}
+              onClick={() => searchPriceOnWeb(name)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-line px-4 py-3 text-sm font-semibold text-ink active:bg-bg disabled:opacity-40"
+            >
+              <Search size={16} /> Pesquisar em outras lojas (Google)
+            </button>
+          )}
 
           {price != null && (
             <div className="mt-3 flex items-baseline justify-between text-sm">
-              <span className="text-muted">Total estimado</span>
+              <span className="text-muted">{inCart ? 'Total no carrinho' : 'Total estimado'}</span>
               <span className="tabular text-base font-bold">{formatMoney(Math.round(price * qty))}</span>
             </div>
           )}
@@ -389,6 +440,19 @@ function PhotoOption({ selected, onClick, label, price, children }: { selected: 
       <span className="grid h-20 w-full place-items-center overflow-hidden rounded-xl bg-photo">{children}</span>
       <span className="mt-1 line-clamp-2 text-[11px] leading-tight text-muted">{label}</span>
       {price != null && <span className="tabular mt-0.5 text-xs font-bold">{formatMoney(price)}</span>}
+    </button>
+  )
+}
+
+function ModeButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: ReactNode; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-brand text-on-brand shadow-sm' : 'text-muted active:bg-line'}`}
+    >
+      {icon}
+      {children}
     </button>
   )
 }

@@ -4,10 +4,69 @@ import { Sheet } from './Sheet'
 import { SectorGrid } from './inputs'
 import { DeltaChip, MenuItem } from './ui'
 import { ProductThumb } from './media'
+import { ConfirmSheet } from './ConfirmSheet'
+import { ItemFormSheet } from './ItemFormSheet'
 import { useStore } from '@/store/store'
 import { actualLine, expectedLine } from '@/lib/calc'
 import { formatMoney, formatQty } from '@/lib/format'
-import type { ListItem } from '@/lib/types'
+import type { ListItem, ShoppingList } from '@/lib/types'
+
+/**
+ * Linhas de item com tudo o que um toque abre: pôr no carrinho, o menu do item e a edição.
+ * `row(item)` desenha a linha; `sheets` vai uma vez no fim da página.
+ */
+export function useItemSheets(list: ShoppingList) {
+  const sectors = useStore((s) => s.sectors)
+  const catalog = useStore((s) => s.catalog)
+  const [confirming, setConfirming] = useState<ListItem | null>(null)
+  const [actions, setActions] = useState<ListItem | null>(null)
+  const [editing, setEditing] = useState<ListItem | null>(null)
+
+  // Mantém a referência "viva" do item aberto no painel (o store troca o objeto a cada edição).
+  const live = (item: ListItem | null) => (item ? (list.items.find((i) => i.id === item.id) ?? null) : null)
+
+  // Selo de quem adicionou: só nos itens que outra pessoa pôs depois de compartilhar.
+  const share = list.share
+  const addedBy = (item: ListItem) =>
+    share && item.createdBy && item.createdBy !== share.memberId ? (share.members.find((m) => m.id === item.createdBy)?.name ?? null) : null
+
+  const row = (item: ListItem) => (
+    <ItemRow
+      key={item.id}
+      item={item}
+      image={catalog[item.productKey]?.image}
+      fallback={sectors.find((s) => s.id === item.sectorId)?.emoji ?? '🛒'}
+      addedBy={addedBy(item)}
+      onCheck={() => setConfirming(item)}
+      onOpen={() => setActions(item)}
+    />
+  )
+
+  const sheets = (
+    <>
+      <ConfirmSheet listId={list.id} item={live(confirming)} onClose={() => setConfirming(null)} />
+      <ItemActionsSheet
+        listId={list.id}
+        item={live(actions)}
+        onClose={() => setActions(null)}
+        onConfirm={(item) => {
+          setActions(null)
+          setConfirming(item)
+        }}
+        onEdit={(item) => {
+          setActions(null)
+          setEditing(item)
+        }}
+      />
+      {editing && <ItemFormSheet open onClose={() => setEditing(null)} listId={list.id} mode={{ kind: 'edit', item: editing }} />}
+    </>
+  )
+
+  return { row, sheets }
+}
+
+/** Os que faltam pegar primeiro, os do carrinho no fim. */
+export const pendingFirst = (items: ListItem[]) => [...items.filter((i) => !i.checked), ...items.filter((i) => i.checked)]
 
 export function ItemRow({
   item,

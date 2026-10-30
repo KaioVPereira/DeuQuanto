@@ -55,8 +55,14 @@ interface State {
   device: Device | null
   /** Alterações de listas compartilhadas ainda não confirmadas pelo servidor, por lista. */
   outbox: Record<string, Op[]>
+  /** Listas em que este celular está "no mercado" (só daqui, não sincroniza). */
+  shopping: Record<string, true>
+  /** Dicas de uso já vistas/dispensadas. */
+  tipsSeen: Record<string, true>
 
   setSettings: (patch: Partial<State['settings']>) => void
+  setShopping: (listId: string, on: boolean) => void
+  dismissTip: (id: string) => void
   createList: (name: string, date: string, copyFromId?: string | null, marketId?: string | null) => string
   updateList: (id: string, patch: Partial<Pick<ShoppingList, 'name' | 'date' | 'marketId'>>) => void
   deleteList: (id: string) => void
@@ -110,6 +116,14 @@ function mapItem(list: ShoppingList, itemId: string, fn: (i: ListItem) => ListIt
   return { ...list, items: list.items.map((i) => (i.id === itemId ? fn(i) : i)) }
 }
 
+function withFlag(flags: Record<string, true>, key: string, on: boolean): Record<string, true> {
+  if (!!flags[key] === on) return flags
+  const next = { ...flags }
+  if (on) next[key] = true
+  else delete next[key]
+  return next
+}
+
 const isLive = (list: ShoppingList | undefined) => !!list?.share && !list.share.ended
 
 /** Põe as alterações na fila de envio — só se a lista estiver compartilhada. */
@@ -135,8 +149,12 @@ export const useStore = create<State>()(
       settings: { themeMode: 'light', accent: 'verde' },
       device: null,
       outbox: {},
+      shopping: {},
+      tipsSeen: {},
 
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+      setShopping: (listId, on) => set((s) => ({ shopping: withFlag(s.shopping, listId, on) })),
+      dismissTip: (id) => set((s) => ({ tipsSeen: withFlag(s.tipsSeen, id, true) })),
 
       createList: (name, date, copyFromId, marketId) => {
         const id = uid()
@@ -191,7 +209,7 @@ export const useStore = create<State>()(
           for (const [k, e] of Object.entries(s.catalog)) catalog[k] = { ...e, paid: e.paid.filter((p) => p.listId !== id) }
           const outbox = { ...s.outbox }
           delete outbox[id]
-          return { lists: s.lists.filter((l) => l.id !== id), catalog, outbox }
+          return { lists: s.lists.filter((l) => l.id !== id), catalog, outbox, shopping: withFlag(s.shopping, id, false) }
         }),
 
       setFinished: (id, finished, marketId) =>
@@ -204,7 +222,7 @@ export const useStore = create<State>()(
           }))
           const op = listOp({ finishedAt, ...(marketId !== undefined ? { market: marketRef(s.markets, marketId) } : {}) })
           const catalog = marketId !== undefined ? remapListMarket(s.catalog, id, marketId) : s.catalog
-          return { lists, catalog, ...queue(s, id, [op]) }
+          return { lists, catalog, ...queue(s, id, [op]), ...(finished ? { shopping: withFlag(s.shopping, id, false) } : {}) }
         }),
 
       addItem: (listId, input) =>
@@ -302,7 +320,14 @@ export const useStore = create<State>()(
           const checkedAt = new Date().toISOString()
           const lists = mapList(s.lists, listId, (l) => mapItem(l, itemId, (i) => ({ ...i, checked: true, actualQty, actualPrice, checkedAt })))
           const catalog = actualPrice != null ? recordPaid(s.catalog, item, list, actualPrice) : s.catalog
-          return { lists, catalog, ...queue(s, listId, [patchItemOp(itemId, { checked: true, actualQty, actualPrice, checkedAt })]) }
+          return {
+            lists,
+            catalog,
+            // Pôs algo no carrinho: está no mercado, e a dica do botão do carrinho já foi entendida.
+            shopping: withFlag(s.shopping, listId, true),
+            tipsSeen: withFlag(s.tipsSeen, 'cart-button', true),
+            ...queue(s, listId, [patchItemOp(itemId, { checked: true, actualQty, actualPrice, checkedAt })]),
+          }
         }),
 
       uncheckItem: (listId, itemId) =>
@@ -421,7 +446,17 @@ export const useStore = create<State>()(
       name: 'lista-compras',
       version: 1,
       storage: createJSONStorage(() => preferencesStorage),
-      partialize: (s) => ({ lists: s.lists, sectors: s.sectors, catalog: s.catalog, markets: s.markets, settings: s.settings, device: s.device, outbox: s.outbox }),
+      partialize: (s) => ({
+        lists: s.lists,
+        sectors: s.sectors,
+        catalog: s.catalog,
+        markets: s.markets,
+        settings: s.settings,
+        device: s.device,
+        outbox: s.outbox,
+        shopping: s.shopping,
+        tipsSeen: s.tipsSeen,
+      }),
     },
   ),
 )

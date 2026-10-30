@@ -2,35 +2,36 @@ import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Header } from '@/components/ui'
 import { CartBar, FinishSheet } from '@/components/CartBar'
-import { ItemActionsSheet, ItemRow } from '@/components/items'
-import { ConfirmSheet } from '@/components/ConfirmSheet'
-import { ItemFormSheet, type ItemFormMode } from '@/components/ItemFormSheet'
+import { pendingFirst, useItemSheets } from '@/components/items'
+import { ItemFormSheet } from '@/components/ItemFormSheet'
 import { useList, useStore } from '@/store/store'
 import { useLiveSync } from '@/sync/engine'
 import { totalsOf } from '@/lib/calc'
 import { formatMoney } from '@/lib/format'
-import type { ListItem } from '@/lib/types'
+import type { ListItem, ShoppingList } from '@/lib/types'
 
 const ALL = 'todos'
 
 export function SectorPage() {
-  const { id, sectorId } = useParams()
-  const navigate = useNavigate()
+  const { id } = useParams()
   const list = useList(id)
-  const sectors = useStore((s) => s.sectors)
-  const catalog = useStore((s) => s.catalog)
-  const [finishing, setFinishing] = useState(false)
-  const [confirming, setConfirming] = useState<ListItem | null>(null)
-  const [actions, setActions] = useState<ListItem | null>(null)
-  const [form, setForm] = useState<ItemFormMode | null>(null)
-  const activeChip = useRef<HTMLButtonElement>(null)
   useLiveSync(list?.id)
+  if (!list) return <Navigate to="/" replace />
+  return <SectorView list={list} />
+}
+
+function SectorView({ list }: { list: ShoppingList }) {
+  const { sectorId } = useParams()
+  const navigate = useNavigate()
+  const sectors = useStore((s) => s.sectors)
+  const [finishing, setFinishing] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const { row, sheets } = useItemSheets(list)
+  const activeChip = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     activeChip.current?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
   }, [sectorId])
-
-  if (!list) return <Navigate to="/" replace />
 
   const isAll = sectorId === ALL
   const sector = sectors.find((s) => s.id === sectorId)
@@ -40,35 +41,9 @@ export function SectorPage() {
   const items = isAll ? list.items : list.items.filter((i) => i.sectorId === sectorId)
   const t = totalsOf(items)
 
-  // Mantém a referência "viva" do item aberto no painel (o store troca o objeto a cada edição).
-  const live = (item: ListItem | null) => (item ? (list.items.find((i) => i.id === item.id) ?? null) : null)
-
-  // Selo de quem adicionou: só nos itens que outra pessoa pôs depois de compartilhar.
-  const share = list.share
-  const addedBy = (item: ListItem) =>
-    share && item.createdBy && item.createdBy !== share.memberId ? (share.members.find((m) => m.id === item.createdBy)?.name ?? null) : null
-
   const goTo = (target: string) => navigate(`/lista/${list.id}/setor/${target}`, { replace: true })
 
-  const renderItems = (group: ListItem[]) => {
-    const pending = group.filter((i) => !i.checked)
-    const done = group.filter((i) => i.checked)
-    return (
-      <div className="space-y-2">
-        {[...pending, ...done].map((item) => (
-          <ItemRow
-            key={item.id}
-            item={item}
-            image={catalog[item.productKey]?.image}
-            fallback={sectors.find((s) => s.id === item.sectorId)?.emoji ?? '🛒'}
-            addedBy={addedBy(item)}
-            onCheck={() => setConfirming(item)}
-            onOpen={() => setActions(item)}
-          />
-        ))}
-      </div>
-    )
-  }
+  const renderItems = (group: ListItem[]) => <div className="space-y-2">{pendingFirst(group).map(row)}</div>
 
   return (
     <div className="min-h-dvh pb-36">
@@ -120,24 +95,10 @@ export function SectorPage() {
         )}
       </div>
 
-      <CartBar list={list} onAdd={() => setForm({ kind: 'add', defaultSectorId: isAll ? undefined : sectorId })} onFinish={() => setFinishing(true)} />
+      <CartBar list={list} onAdd={() => setAdding(true)} onFinish={() => setFinishing(true)} />
       <FinishSheet list={list} open={finishing} onClose={() => setFinishing(false)} onFinished={() => navigate('/', { replace: true })} />
-
-      <ConfirmSheet listId={list.id} item={live(confirming)} onClose={() => setConfirming(null)} />
-      <ItemActionsSheet
-        listId={list.id}
-        item={live(actions)}
-        onClose={() => setActions(null)}
-        onConfirm={(item) => {
-          setActions(null)
-          setConfirming(item)
-        }}
-        onEdit={(item) => {
-          setActions(null)
-          setForm({ kind: 'edit', item })
-        }}
-      />
-      {form && <ItemFormSheet open onClose={() => setForm(null)} listId={list.id} mode={form} />}
+      <ItemFormSheet open={adding} onClose={() => setAdding(false)} listId={list.id} mode={{ kind: 'add', defaultSectorId: isAll ? undefined : sectorId }} />
+      {sheets}
     </div>
   )
 }
